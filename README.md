@@ -45,7 +45,7 @@ Use `git add` selectively if you do not want to commit the large Excel/PDF files
 
 ## GitHub Pages vs running the app
 
-**GitHub Pages only serves static files** (HTML/CSS/JS). It **cannot** run a Python **Streamlit** server, so the app itself must be hosted elsewhere. This repo includes a small **static site** under `docs/` that you can publish on Pages as a project homepage (instructions + link to the live app).
+**GitHub Pages only serves static files** (HTML/CSS/JS). It **cannot** run a Python **Streamlit** server, so the app itself must be hosted elsewhere. This repo includes a **GitHub Pages** redirect from **`https://dhruvapyapali.github.io/economic-analysis-model/`** straight to the Streamlit app (see `docs/index.html`).
 
 **Recommended:** deploy the Streamlit app with **[Streamlit Community Cloud](https://streamlit.io/cloud)** (free, connects to your GitHub repo).
 
@@ -54,15 +54,15 @@ Use `git add` selectively if you do not want to commit the large Excel/PDF files
 3. Set **Main file path** to `app.py`.
 4. Deploy; Streamlit assigns your app URL (this project: [live app](https://economic-analysis-model-n66hlcdqzg2vxhjwnrdnqr.streamlit.app/)).
 
-The GitHub Pages landing page (`docs/index.html`) **Open live app** button uses the same URL.
+The GitHub Pages URL redirects to the same Streamlit URL.
 
 ## Enable GitHub Pages (project site)
 
-GitHub Pages is configured for this repo (**branch `main`**, folder **`/docs`**). After the first build finishes, the site is at **`https://dhruvapyapali.github.io/economic-analysis-model/`**.
+GitHub Pages is configured for this repo (**branch `main`**, folder **`/docs`**). The published URL **`https://dhruvapyapali.github.io/economic-analysis-model/`** immediately **redirects** to the live Streamlit app (GitHub cannot host Streamlit itself, so this is the usual pattern).
 
 To change settings: repo **Settings** → **Pages** (exact URL is also shown there).
 
-The `docs/index.html` page is a landing site only; the interactive model runs on Streamlit Cloud (or any other host you prefer).
+To point the redirect at a new Streamlit URL later, edit `docs/index.html` (search for `economic-analysis-model-n66hlcdqzg2vxhjwnrdnqr.streamlit.app`) and push.
 
 ## CI on every push
 
