@@ -2,6 +2,8 @@
 
 Interactive **Streamlit** port of the Excel workbook’s **Simple** analysis: scenario-weighted projections, combined revenue build-up, NPV-style metrics, and heuristic multiples. Core logic lives in `economics_model.py`; the UI is `app.py`.
 
+**Live app (Streamlit):** [https://economic-analysis-model-n66hlcdqzg2vxhjwnrdnqr.streamlit.app/](https://economic-analysis-model-n66hlcdqzg2vxhjwnrdnqr.streamlit.app/)
+
 ## Run locally
 
 ```bash
@@ -50,9 +52,9 @@ Use `git add` selectively if you do not want to commit the large Excel/PDF files
 1. Repo is on GitHub: **`DhruvaPyapali/economic-analysis-model`**.
 2. Sign in at Streamlit Community Cloud and **New app** → pick **`economic-analysis-model`**.
 3. Set **Main file path** to `app.py`.
-4. Deploy; Streamlit will assign a URL (you can often choose a subdomain). It will look like `https://<your-chosen-name>.streamlit.app`.
+4. Deploy; Streamlit assigns your app URL (this project: [live app](https://economic-analysis-model-n66hlcdqzg2vxhjwnrdnqr.streamlit.app/)).
 
-Then edit `docs/index.html`: set the `Open live app` link (`id="app-link"`) `href` to that Streamlit URL, commit, and push again.
+The GitHub Pages landing page (`docs/index.html`) **Open live app** button uses the same URL.
 
 ## Enable GitHub Pages (project site)
 
