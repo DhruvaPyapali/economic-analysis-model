@@ -41,6 +41,7 @@ with st.sidebar:
         "How to treat growth and risk",
         list(GROWTH_MODE_LABELS.keys()),
         index=0,
+        key="growth_mode_label",
         help="Weighted scenarios turn on optimistic and pessimistic weights; single discount uses one rate rule from the workbook.",
     )
     growth_method = GROWTH_MODE_LABELS[mode_label]
@@ -52,6 +53,7 @@ with st.sidebar:
         value=2.78,
         step=0.05,
         format="%.2f",
+        key="risk_free_pct",
         help="Annual rate, percent (e.g. 2.78 = 2.78%).",
     )
     risk_free = _pct(risk_free_pct)
@@ -63,6 +65,7 @@ with st.sidebar:
         0,
         5,
         format="%d%%",
+        key="p_opt_pct",
         help="Only used in weighted mode; optimistic + pessimistic must stay at or below 100%.",
     )
     p_pess_pct = st.slider(
@@ -72,6 +75,7 @@ with st.sidebar:
         0,
         5,
         format="%d%%",
+        key="p_pess_pct",
         help="Only used in weighted mode.",
     )
     p_opt = _pct(float(p_opt_pct))
@@ -86,6 +90,7 @@ with st.sidebar:
     margins_same = st.checkbox(
         "Use the same margins in every scenario",
         value=True,
+        key="margins_same",
         help="If off, you can type optimistic and pessimistic gross and EBITDA margins below.",
     )
 
@@ -96,6 +101,7 @@ with st.sidebar:
         min_value=0.0,
         value=20.0,
         step=0.5,
+        key="pe_ratio",
         help="Heuristic price check: multiple × target year-0 gross profit.",
     )
     peg_ratio = st.number_input(
@@ -103,6 +109,7 @@ with st.sidebar:
         min_value=0.0,
         value=2.0,
         step=0.1,
+        key="peg_ratio",
         help="Used with weighted sales growth and gross profit in the PEG-style row.",
     )
     ps_ratio = st.number_input(
@@ -110,6 +117,7 @@ with st.sidebar:
         min_value=0.0,
         value=4.0,
         step=0.25,
+        key="ps_ratio",
         help="Multiple × target revenue.",
     )
 
@@ -241,27 +249,38 @@ df = pd.DataFrame(
     }
 )
 
-tab1, tab2 = st.tabs(["Charts", "Table"])
-with tab1:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=years, y=res.combined_gross_sales, name="Combined sales", mode="lines+markers"))
-    fig.add_trace(go.Scatter(x=years, y=res.combined_gross_profit, name="Combined gross profit", mode="lines+markers"))
-    fig.update_layout(
-        height=420,
-        margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        yaxis_title="Same units as your inputs",
-        xaxis_title="Year",
+# Bust Plotly embed cache when series change (some hosts/browsers reuse the old figure).
+_chart_fingerprint = hash(
+    (
+        res.combined_gross_sales.tobytes(),
+        res.combined_gross_profit.tobytes(),
     )
-    st.plotly_chart(fig, use_container_width=True)
+)
 
-with tab2:
-    disp = df.copy()
-    for c in ["Combined sales", "Combined gross profit", "Target gross profit", "Acquirer gross profit"]:
-        disp[c] = disp[c].map(lambda x: f"{x:,.2f}")
-    disp["Combined gross margin"] = disp["Combined gross margin"].map(lambda x: f"{x:.1%}")
-    disp["YoY sales growth"] = disp["YoY sales growth"].map(lambda x: "—" if pd.isna(x) else f"{x:.1%}")
-    st.dataframe(disp, use_container_width=True, hide_index=True)
+st.subheader("Forecast chart")
+st.caption(
+    "Lines move when you change **revenues, COGS, EBITDA, growth rates**, or **weighted** scenario mix. "
+    "**Discount** and **multiples** only change the KPIs and price heuristics above—not these lines."
+)
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=years, y=res.combined_gross_sales, name="Combined sales", mode="lines+markers"))
+fig.add_trace(go.Scatter(x=years, y=res.combined_gross_profit, name="Combined gross profit", mode="lines+markers"))
+fig.update_layout(
+    height=420,
+    margin=dict(l=10, r=10, t=40, b=10),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    yaxis_title="Same units as your inputs",
+    xaxis_title="Year",
+)
+st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
+
+st.subheader("Year-by-year table")
+disp = df.copy()
+for c in ["Combined sales", "Combined gross profit", "Target gross profit", "Acquirer gross profit"]:
+    disp[c] = disp[c].map(lambda x: f"{x:,.2f}")
+disp["Combined gross margin"] = disp["Combined gross margin"].map(lambda x: f"{x:.1%}")
+disp["YoY sales growth"] = disp["YoY sales growth"].map(lambda x: "—" if pd.isna(x) else f"{x:.1%}")
+st.dataframe(disp, use_container_width=True, hide_index=True, key=f"table_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
 
 with st.expander("Derived scenario mix (target)"):
     c1, c2, c3 = st.columns(3)
