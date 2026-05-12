@@ -19,15 +19,15 @@ python -m pytest -q
 
 ## Publish to GitHub
 
-This project is published as **`DhruvaPyapali/CodersRepo`**.
+This project is published as **`DhruvaPyapali/economic-analysis-model`** (the GitHub repository name **Economic Analysis Model** is represented without spaces as `economic-analysis-model`; you can set a friendlier **Description** in the repo settings on GitHub).
 
-**Repository URL:** `https://github.com/DhruvaPyapali/CodersRepo`
+**Repository URL:** `https://github.com/DhruvaPyapali/economic-analysis-model`
 
 Clone elsewhere:
 
 ```bash
-git clone https://github.com/DhruvaPyapali/CodersRepo.git
-cd CodersRepo
+git clone https://github.com/DhruvaPyapali/economic-analysis-model.git
+cd economic-analysis-model
 ```
 
 To push updates from this folder:
@@ -47,8 +47,8 @@ Use `git add` selectively if you do not want to commit the large Excel/PDF files
 
 **Recommended:** deploy the Streamlit app with **[Streamlit Community Cloud](https://streamlit.io/cloud)** (free, connects to your GitHub repo).
 
-1. Repo is on GitHub: **`DhruvaPyapali/CodersRepo`**.
-2. Sign in at Streamlit Community Cloud and **New app** → pick **`CodersRepo`**.
+1. Repo is on GitHub: **`DhruvaPyapali/economic-analysis-model`**.
+2. Sign in at Streamlit Community Cloud and **New app** → pick **`economic-analysis-model`**.
 3. Set **Main file path** to `app.py`.
 4. Deploy; Streamlit will assign a URL (you can often choose a subdomain). It will look like `https://<your-chosen-name>.streamlit.app`.
 
@@ -56,7 +56,7 @@ Then edit `docs/index.html`: set the `Open live app` link (`id="app-link"`) `hre
 
 ## Enable GitHub Pages (project site)
 
-GitHub Pages is configured for this repo (**branch `main`**, folder **`/docs`**). After the first build finishes, the site is at **`https://dhruvapyapali.github.io/CodersRepo/`**.
+GitHub Pages is configured for this repo (**branch `main`**, folder **`/docs`**). After the first build finishes, the site is at **`https://dhruvapyapali.github.io/economic-analysis-model/`**.
 
 To change settings: repo **Settings** → **Pages** (exact URL is also shown there).
 
