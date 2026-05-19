@@ -17,17 +17,46 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from economics_model import GrowthMethod, SimpleModelInputs, run_simple_model
+from economics_model import GrowthMethod, SimpleModelInputs, is_discrete_growth, run_simple_model
 
-# Friendly labels → values expected by economics_model / Excel parity
+# Excel Dashboard C27 options (shared strings 236–237)
 GROWTH_MODE_LABELS: dict[str, GrowthMethod] = {
-    "Single discount rate": "Other",
-    "Weighted scenarios (optimistic / base / pessimistic)": "Discrete (Weighted Cash Flows)",
+    "Discrete — weighted cash flows": "Discrete (Weighted Cash Flows)",
+    "Continuous — discount rate premium": "Continuous (Discount Rate Premium)",
+}
+
+CURRENCIES: dict[str, dict[str, str]] = {
+    "USD — US dollar": {"symbol": "$", "suffix": ""},
+    "EUR — euro": {"symbol": "€", "suffix": ""},
+    "GBP — British pound": {"symbol": "£", "suffix": ""},
+    "CAD — Canadian dollar": {"symbol": "C$", "suffix": ""},
+    "AUD — Australian dollar": {"symbol": "A$", "suffix": ""},
+    "CHF — Swiss franc": {"symbol": "CHF ", "suffix": ""},
+    "JPY — Japanese yen": {"symbol": "¥", "suffix": ""},
+    "CNY — Chinese yuan": {"symbol": "¥", "suffix": ""},
+    "INR — Indian rupee": {"symbol": "₹", "suffix": ""},
+    "None (plain numbers)": {"symbol": "", "suffix": ""},
 }
 
 
 def _pct(x: float) -> float:
     return x / 100.0
+
+
+def _format_money(value: float, currency_key: str, *, decimals: int = 0) -> str:
+    meta = CURRENCIES[currency_key]
+    symbol = meta["symbol"]
+    if currency_key.startswith("JPY"):
+        formatted = f"{value:,.0f}"
+    elif decimals == 0:
+        formatted = f"{value:,.0f}"
+    else:
+        formatted = f"{value:,.{decimals}f}"
+    if not symbol:
+        return formatted
+    if symbol.endswith(" "):
+        return f"{symbol}{formatted}{meta['suffix']}"
+    return f"{symbol}{formatted}{meta['suffix']}"
 
 
 st.set_page_config(page_title="Economic Analysis (Simple)", layout="wide")
@@ -36,15 +65,33 @@ st.title("Economic Analysis — Simple model")
 st.caption("M&A-style simple path: combine acquirer + target sales, discount target gross profit, quick valuation checks.")
 
 with st.sidebar:
-    st.header("Scenario")
-    mode_label = st.selectbox(
-        "How to treat growth and risk",
-        list(GROWTH_MODE_LABELS.keys()),
+    st.header("Display")
+    currency_key = st.selectbox(
+        "Currency",
+        list(CURRENCIES.keys()),
         index=0,
+        key="currency_key",
+        help="Labels amounts in the UI only; inputs are not converted between currencies.",
+    )
+    currency_meta = CURRENCIES[currency_key]
+    money_hint = (
+        "All money fields use the same currency (display only — no FX conversion)."
+        if currency_meta["symbol"]
+        else "Amounts shown without a currency symbol."
+    )
+
+    st.divider()
+    st.header("Model type")
+    mode_label = st.radio(
+        "Growth / risk method",
+        list(GROWTH_MODE_LABELS.keys()),
+        index=1,
+        horizontal=True,
         key="growth_mode_label",
-        help="Weighted scenarios turn on optimistic and pessimistic weights; single discount uses one rate rule from the workbook.",
+        help="Matches the Excel workbook: Discrete uses scenario weights; Continuous adds a premium to the risk-free rate.",
     )
     growth_method = GROWTH_MODE_LABELS[mode_label]
+    discrete_mode = is_discrete_growth(growth_method)
 
     risk_free_pct = st.number_input(
         "Risk-free rate",
@@ -58,34 +105,47 @@ with st.sidebar:
     )
     risk_free = _pct(risk_free_pct)
 
-    p_opt_pct = st.slider(
-        "Optimistic scenario weight",
-        0,
-        100,
-        0,
-        5,
-        format="%d%%",
-        key="p_opt_pct",
-        help="Only used in weighted mode; optimistic + pessimistic must stay at or below 100%.",
-    )
-    p_pess_pct = st.slider(
-        "Pessimistic scenario weight",
-        0,
-        100,
-        0,
-        5,
-        format="%d%%",
-        key="p_pess_pct",
-        help="Only used in weighted mode.",
-    )
+    if discrete_mode:
+        p_opt_pct = st.slider(
+            "Optimistic scenario weight",
+            0,
+            100,
+            0,
+            5,
+            format="%d%%",
+            key="p_opt_pct",
+            help="Share of the weighted sales-growth path; optimistic + pessimistic must stay at or below 100%.",
+        )
+        p_pess_pct = st.slider(
+            "Pessimistic scenario weight",
+            0,
+            100,
+            0,
+            5,
+            format="%d%%",
+            key="p_pess_pct",
+            help="Share of the weighted sales-growth path.",
+        )
+        sq = max(0.0, 100 - p_opt_pct - p_pess_pct)
+        st.caption(f"Base case weight: **{sq:.0f}%** (remainder).")
+    else:
+        p_opt_pct = st.slider(
+            "Discount rate premium (optimistic)",
+            0,
+            100,
+            0,
+            5,
+            format="%d%%",
+            key="p_opt_pct",
+            help="Added to the risk-free rate for NPV (workbook: risk-free + this premium).",
+        )
+        p_pess_pct = 0
+        st.caption("Pessimistic weight is not used in **Continuous** mode.")
+
     p_opt = _pct(float(p_opt_pct))
     p_pess = _pct(float(p_pess_pct))
 
-    if growth_method == "Discrete (Weighted Cash Flows)":
-        sq = max(0.0, 100 - p_opt_pct - p_pess_pct)
-        st.caption(f"Base case weight: **{sq:.0f}%** (remainder).")
-
-    if p_opt + p_pess > 1.0:
+    if discrete_mode and p_opt + p_pess > 1.0:
         st.error("Optimistic + pessimistic cannot exceed 100%.")
     margins_same = st.checkbox(
         "Use the same margins in every scenario",
@@ -125,7 +185,7 @@ col_a, col_t = st.columns(2)
 
 with col_a:
     st.subheader("Acquirer (buyer)")
-    st.caption("Most recent year; same units for all money fields.")
+    st.caption(f"Most recent year; {money_hint}")
     ar = st.number_input("Revenue", key="ar", min_value=0.0, value=100.0, step=1.0, format="%.0f")
     ac = st.number_input("Cost of goods sold", key="ac", min_value=0.0, value=40.0, step=1.0, format="%.0f")
     ae = st.number_input("EBITDA", key="ae", min_value=0.0, value=25.0, step=1.0, format="%.0f")
@@ -155,7 +215,7 @@ with col_a:
 
 with col_t:
     st.subheader("Target (seller)")
-    st.caption("Most recent year; same units as acquirer.")
+    st.caption(f"Most recent year; {money_hint}")
     tr = st.number_input("Revenue", key="tr", min_value=0.0, value=50.0, step=1.0, format="%.0f")
     tc = st.number_input("Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=1.0, format="%.0f")
     te = st.number_input("EBITDA", key="te", min_value=0.0, value=12.0, step=1.0, format="%.0f")
@@ -214,15 +274,23 @@ inp = SimpleModelInputs(
     ps_ratio=ps_ratio,
 )
 
-if p_opt + p_pess > 1.0:
+if discrete_mode and p_opt + p_pess > 1.0:
     st.stop()
 
 res = run_simple_model(inp)
 
 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
 mcol1.metric("Discount rate", f"{res.discount_rate:.2%}", help="Used for NPV rows.")
-mcol2.metric("NPV — 10y target gross profit", f"{res.npv_gross_profit_10y:,.0f}", help="Present value of years 1–10 gross profit.")
-mcol3.metric("NPV — terminal-style", f"{res.valuation_terminal_style:,.0f}", help="Nine years plus a bumped final cash flow, per workbook pattern.")
+mcol2.metric(
+    "NPV — 10y target gross profit",
+    _format_money(res.npv_gross_profit_10y, currency_key),
+    help="Present value of years 1–10 gross profit.",
+)
+mcol3.metric(
+    "NPV — terminal-style",
+    _format_money(res.valuation_terminal_style, currency_key),
+    help="Nine years plus a bumped final cash flow, per workbook pattern.",
+)
 _g2 = res.yoy_revenue_growth[2]
 mcol4.metric(
     "Combined sales growth (yr 2)",
@@ -232,9 +300,21 @@ mcol4.metric(
 
 st.subheader("Target price heuristics")
 vcol1, vcol2, vcol3 = st.columns(3)
-vcol1.metric("Gross-profit multiple", f"{res.price_pe:,.0f}", help="Multiple × year-0 target gross profit.")
-vcol2.metric("PEG-style", f"{res.price_peg:,.0f}", help="Uses weighted sales growth and gross profit.")
-vcol3.metric("Sales multiple", f"{res.price_ps:,.0f}", help="Multiple × target revenue.")
+vcol1.metric(
+    "Gross-profit multiple",
+    _format_money(res.price_pe, currency_key),
+    help="Multiple × year-0 target gross profit.",
+)
+vcol2.metric(
+    "PEG-style",
+    _format_money(res.price_peg, currency_key),
+    help="Uses weighted sales growth and gross profit.",
+)
+vcol3.metric(
+    "Sales multiple",
+    _format_money(res.price_ps, currency_key),
+    help="Multiple × target revenue.",
+)
 
 years = list(range(11))
 df = pd.DataFrame(
@@ -269,7 +349,7 @@ fig.update_layout(
     height=420,
     margin=dict(l=10, r=10, t=40, b=10),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    yaxis_title="Same units as your inputs",
+    yaxis_title=currency_key.split(" — ")[0] if currency_meta["symbol"] else "Amount (no currency symbol)",
     xaxis_title="Year",
 )
 st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
@@ -277,12 +357,12 @@ st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprin
 st.subheader("Year-by-year table")
 disp = df.copy()
 for c in ["Combined sales", "Combined gross profit", "Target gross profit", "Acquirer gross profit"]:
-    disp[c] = disp[c].map(lambda x: f"{x:,.2f}")
+    disp[c] = disp[c].map(lambda x, ck=currency_key: _format_money(float(x), ck, decimals=2))
 disp["Combined gross margin"] = disp["Combined gross margin"].map(lambda x: f"{x:.1%}")
 disp["YoY sales growth"] = disp["YoY sales growth"].map(lambda x: "—" if pd.isna(x) else f"{x:.1%}")
 st.dataframe(disp, use_container_width=True, hide_index=True, key=f"table_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
 
-with st.expander("Derived scenario mix (target)"):
+with st.expander("Derived scenario mix (target)", expanded=discrete_mode):
     c1, c2, c3 = st.columns(3)
     c1.metric("Optimistic", f"{res.target.p_opt:.0%}")
     c2.metric("Base", f"{res.target.p_sq:.0%}")

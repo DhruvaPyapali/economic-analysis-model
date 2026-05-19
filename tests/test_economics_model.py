@@ -2,12 +2,12 @@ import math
 
 import pytest
 
-from economics_model import SimpleModelInputs, excel_npv, run_simple_model
+from economics_model import SimpleModelInputs, excel_npv, normalize_growth_method, run_simple_model
 
 
 def base_inputs(**overrides):
     defaults = dict(
-        growth_method="Other",
+        growth_method="Continuous (Discount Rate Premium)",
         risk_free_rate=0.03,
         optimistic_probability=0.10,
         pessimistic_probability=0.20,
@@ -47,8 +47,14 @@ def test_excel_npv_matches_manual_discounting():
     assert excel_npv(rate, cashflows) == pytest.approx(expected)
 
 
+def test_legacy_other_alias_maps_to_continuous():
+    assert normalize_growth_method("Other") == "Continuous (Discount Rate Premium)"
+
+
 def test_discount_rate_rule_matches_growth_method():
-    other = run_simple_model(base_inputs(growth_method="Other", risk_free_rate=0.03, optimistic_probability=0.07))
+    continuous = run_simple_model(
+        base_inputs(growth_method="Continuous (Discount Rate Premium)", risk_free_rate=0.03, optimistic_probability=0.07)
+    )
     discrete = run_simple_model(
         base_inputs(
             growth_method="Discrete (Weighted Cash Flows)",
@@ -56,7 +62,7 @@ def test_discount_rate_rule_matches_growth_method():
             optimistic_probability=0.07,
         )
     )
-    assert other.discount_rate == pytest.approx(0.10)
+    assert continuous.discount_rate == pytest.approx(0.10)
     assert discrete.discount_rate == pytest.approx(0.03)
 
 
@@ -80,8 +86,12 @@ def test_discrete_weighted_growth_and_probabilities():
 
 
 def test_higher_discount_rate_reduces_npv():
-    low_discount = run_simple_model(base_inputs(growth_method="Other", risk_free_rate=0.01, optimistic_probability=0.02))
-    high_discount = run_simple_model(base_inputs(growth_method="Other", risk_free_rate=0.08, optimistic_probability=0.12))
+    low_discount = run_simple_model(
+        base_inputs(growth_method="Continuous (Discount Rate Premium)", risk_free_rate=0.01, optimistic_probability=0.02)
+    )
+    high_discount = run_simple_model(
+        base_inputs(growth_method="Continuous (Discount Rate Premium)", risk_free_rate=0.08, optimistic_probability=0.12)
+    )
     assert high_discount.discount_rate > low_discount.discount_rate
     assert high_discount.npv_gross_profit_10y < low_discount.npv_gross_profit_10y
 

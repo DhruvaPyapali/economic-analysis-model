@@ -12,7 +12,26 @@ from typing import Literal
 
 import numpy as np
 
-GrowthMethod = Literal["Discrete (Weighted Cash Flows)", "Other"]
+GrowthMethod = Literal[
+    "Discrete (Weighted Cash Flows)",
+    "Continuous (Discount Rate Premium)",
+]
+
+# Legacy alias kept for older callers/tests migrating from "Other".
+CONTINUOUS_GROWTH_METHOD: GrowthMethod = "Continuous (Discount Rate Premium)"
+
+
+def normalize_growth_method(method: str) -> GrowthMethod:
+    """Map workbook / legacy values to a supported growth method."""
+    if method == "Discrete (Weighted Cash Flows)":
+        return "Discrete (Weighted Cash Flows)"
+    if method in ("Continuous (Discount Rate Premium)", "Other"):
+        return "Continuous (Discount Rate Premium)"
+    raise ValueError(f"Unsupported growth method: {method!r}")
+
+
+def is_discrete_growth(method: GrowthMethod | str) -> bool:
+    return normalize_growth_method(method) == "Discrete (Weighted Cash Flows)"
 
 
 def excel_npv(discount_rate: float, cashflows: list[float]) -> float:
@@ -27,7 +46,7 @@ def excel_npv(discount_rate: float, cashflows: list[float]) -> float:
 class SimpleModelInputs:
     # Dashboard-style fields referenced by the Simple sheets
     time_horizon_years: int = 10
-    growth_method: GrowthMethod = "Other"
+    growth_method: GrowthMethod = "Continuous (Discount Rate Premium)"
     risk_free_rate: float = 0.0278
     optimistic_probability: float = 0.0
     pessimistic_probability: float = 0.0
@@ -91,8 +110,8 @@ class SimpleModelResult:
     price_ps: float
 
 
-def _scenario_probs(method: GrowthMethod, p_opt: float, p_pess: float) -> tuple[float, float, float]:
-    discrete = method == "Discrete (Weighted Cash Flows)"
+def _scenario_probs(method: GrowthMethod | str, p_opt: float, p_pess: float) -> tuple[float, float, float]:
+    discrete = is_discrete_growth(method)
     po = p_opt if discrete else 0.0
     pp = p_pess if discrete else 0.0
     ps = 1.0 - po - pp
@@ -101,7 +120,7 @@ def _scenario_probs(method: GrowthMethod, p_opt: float, p_pess: float) -> tuple[
 
 def _discount_rate(inp: SimpleModelInputs) -> float:
     # =IF(C27="Discrete...", C28, C28+C29)
-    if inp.growth_method == "Discrete (Weighted Cash Flows)":
+    if is_discrete_growth(inp.growth_method):
         return inp.risk_free_rate
     return inp.risk_free_rate + inp.optimistic_probability
 
