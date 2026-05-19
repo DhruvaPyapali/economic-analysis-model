@@ -17,12 +17,26 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from economics_model import GrowthMethod, SimpleModelInputs, is_discrete_growth, run_simple_model
+# Excel Dashboard C27 (shared strings 236–237)
+DISCRETE_GROWTH_METHOD = "Discrete (Weighted Cash Flows)"
+CONTINUOUS_GROWTH_METHOD = "Continuous (Discount Rate Premium)"
 
-# Excel Dashboard C27 options (shared strings 236–237)
-GROWTH_MODE_LABELS: dict[str, GrowthMethod] = {
-    "Discrete — weighted cash flows": "Discrete (Weighted Cash Flows)",
-    "Continuous — discount rate premium": "Continuous (Discount Rate Premium)",
+try:
+    from economics_model import SimpleModelInputs, run_simple_model
+except ImportError as _import_err:
+    st.set_page_config(page_title="Economic Analysis (Simple)", layout="wide")
+    st.error(
+        "Failed to load `economics_model.py`. "
+        "On Streamlit Cloud, open **Manage app → Reboot app** after a deploy, "
+        "or check that `economics_model.py` is in the repo root next to `app.py`."
+    )
+    st.exception(_import_err)
+    st.stop()
+
+# Friendly labels → workbook growth-method values
+GROWTH_MODE_LABELS: dict[str, str] = {
+    "Discrete — weighted cash flows": DISCRETE_GROWTH_METHOD,
+    "Continuous — discount rate premium": CONTINUOUS_GROWTH_METHOD,
 }
 
 CURRENCIES: dict[str, dict[str, str]] = {
@@ -91,7 +105,7 @@ with st.sidebar:
         help="Matches the Excel workbook: Discrete uses scenario weights; Continuous adds a premium to the risk-free rate.",
     )
     growth_method = GROWTH_MODE_LABELS[mode_label]
-    discrete_mode = is_discrete_growth(growth_method)
+    discrete_mode = growth_method == DISCRETE_GROWTH_METHOD
 
     risk_free_pct = st.number_input(
         "Risk-free rate",
