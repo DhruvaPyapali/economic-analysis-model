@@ -14,6 +14,10 @@ import numpy as np
 
 GrowthMethod = Literal["Discrete (Weighted Cash Flows)", "Other"]
 
+# UI / workbook naming
+MODEL_CONTINUOUS: GrowthMethod = "Other"
+MODEL_DISCONTINUOUS: GrowthMethod = "Discrete (Weighted Cash Flows)"
+
 
 def excel_npv(discount_rate: float, cashflows: list[float]) -> float:
     """Match Excel NPV: sum(cf_i / (1+r)^i) for i = 1..len(cf)."""

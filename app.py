@@ -17,34 +17,95 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from economics_model import GrowthMethod, SimpleModelInputs, run_simple_model
-
-# Friendly labels → values expected by economics_model / Excel parity
-GROWTH_MODE_LABELS: dict[str, GrowthMethod] = {
-    "Single discount rate": "Other",
-    "Weighted scenarios (optimistic / base / pessimistic)": "Discrete (Weighted Cash Flows)",
-}
+from display_currency import CURRENCIES, currency_label, format_money
+from economics_model import (
+    MODEL_CONTINUOUS,
+    MODEL_DISCONTINUOUS,
+    GrowthMethod,
+    SimpleModelInputs,
+    run_simple_model,
+)
 
 
 def _pct(x: float) -> float:
     return x / 100.0
 
 
+def _to_reporting(amount: float, fx_rate: float) -> float:
+    """Convert target-currency amount to reporting currency (divide by rate)."""
+    if fx_rate <= 0:
+        return amount
+    return amount / fx_rate
+
+
 st.set_page_config(page_title="Economic Analysis (Simple)", layout="wide")
 
 st.title("Economic Analysis — Simple model")
-st.caption("M&A-style simple path: combine acquirer + target sales, discount target gross profit, quick valuation checks.")
+st.caption(
+    "M&A-style simple path: combine acquirer + target sales, discount target gross profit, quick valuation checks."
+)
 
 with st.sidebar:
-    st.header("Scenario")
-    mode_label = st.selectbox(
-        "How to treat growth and risk",
-        list(GROWTH_MODE_LABELS.keys()),
+    st.header("Currency")
+    reporting_ccy = st.selectbox(
+        "Reporting currency",
+        options=list(CURRENCIES.keys()),
+        format_func=currency_label,
         index=0,
-        key="growth_mode_label",
-        help="Weighted scenarios turn on optimistic and pessimistic weights; single discount uses one rate rule from the workbook.",
+        key="reporting_ccy",
+        help="All outputs and acquirer inputs are shown in this currency.",
     )
-    growth_method = GROWTH_MODE_LABELS[mode_label]
+    target_other_ccy = st.checkbox(
+        "Target amounts entered in another currency",
+        value=False,
+        key="target_other_ccy",
+        help="Convert target revenue, COGS, and EBITDA into reporting currency before the model runs.",
+    )
+    fx_rate = 1.0
+    if target_other_ccy:
+        target_ccy_options = [c for c in CURRENCIES.keys() if c != reporting_ccy]
+        if not target_ccy_options:
+            target_ccy_options = list(CURRENCIES.keys())
+        target_ccy = st.selectbox(
+            "Target input currency",
+            options=target_ccy_options,
+            format_func=currency_label,
+            key="target_input_ccy",
+        )
+        fx_rate = st.number_input(
+            f"Exchange rate ({target_ccy} per 1 {reporting_ccy})",
+            min_value=0.0001,
+            value=1.0,
+            step=0.01,
+            format="%.4f",
+            key="fx_rate",
+            help=(
+                f"How many {target_ccy} equal one {reporting_ccy}. "
+                f"Example: if 1 {reporting_ccy} = 0.92 {target_ccy}, enter 0.92."
+            ),
+        )
+        st.caption(
+            f"Target figures are converted: "
+            f"**{reporting_ccy}** = **{target_ccy}** ÷ {fx_rate:g}."
+        )
+
+    st.divider()
+    st.header("Valuation model")
+    model_kind = st.radio(
+        "Growth and risk framework",
+        options=["Continuous", "Discontinuous"],
+        index=0,
+        key="model_kind",
+        help=(
+            "**Continuous** — single growth path; discount rate = risk-free plus a risk premium. "
+            "**Discontinuous** — weighted optimistic / base / pessimistic scenarios; "
+            "discount rate = risk-free only."
+        ),
+    )
+    growth_method: GrowthMethod = (
+        MODEL_DISCONTINUOUS if model_kind == "Discontinuous" else MODEL_CONTINUOUS
+    )
+    is_discrete = growth_method == MODEL_DISCONTINUOUS
 
     risk_free_pct = st.number_input(
         "Risk-free rate",
@@ -58,35 +119,50 @@ with st.sidebar:
     )
     risk_free = _pct(risk_free_pct)
 
-    p_opt_pct = st.slider(
-        "Optimistic scenario weight",
-        0,
-        100,
-        0,
-        5,
-        format="%d%%",
-        key="p_opt_pct",
-        help="Only used in weighted mode; optimistic + pessimistic must stay at or below 100%.",
-    )
-    p_pess_pct = st.slider(
-        "Pessimistic scenario weight",
-        0,
-        100,
-        0,
-        5,
-        format="%d%%",
-        key="p_pess_pct",
-        help="Only used in weighted mode.",
-    )
-    p_opt = _pct(float(p_opt_pct))
-    p_pess = _pct(float(p_pess_pct))
+    p_opt = 0.0
+    p_pess = 0.0
+    p_opt_pct = 0
+    p_pess_pct = 0
 
-    if growth_method == "Discrete (Weighted Cash Flows)":
+    if is_discrete:
+        p_opt_pct = st.slider(
+            "Optimistic scenario weight",
+            0,
+            100,
+            0,
+            5,
+            format="%d%%",
+            key="p_opt_pct",
+        )
+        p_pess_pct = st.slider(
+            "Pessimistic scenario weight",
+            0,
+            100,
+            0,
+            5,
+            format="%d%%",
+            key="p_pess_pct",
+        )
+        p_opt = _pct(float(p_opt_pct))
+        p_pess = _pct(float(p_pess_pct))
         sq = max(0.0, 100 - p_opt_pct - p_pess_pct)
         st.caption(f"Base case weight: **{sq:.0f}%** (remainder).")
+    else:
+        risk_premium_pct = st.slider(
+            "Risk premium (added to discount rate)",
+            0,
+            100,
+            0,
+            5,
+            format="%d%%",
+            key="risk_premium_pct",
+            help="Continuous model: discount rate = risk-free + this premium (workbook “Other” path).",
+        )
+        p_opt = _pct(float(risk_premium_pct))
 
-    if p_opt + p_pess > 1.0:
+    if is_discrete and p_opt + p_pess > 1.0:
         st.error("Optimistic + pessimistic cannot exceed 100%.")
+
     margins_same = st.checkbox(
         "Use the same margins in every scenario",
         value=True,
@@ -121,11 +197,14 @@ with st.sidebar:
         help="Multiple × target revenue.",
     )
 
+ccy_sym = CURRENCIES[reporting_ccy]["symbol"].strip()
+money_hint = f"Amounts in {reporting_ccy} ({ccy_sym}) unless noted."
+
 col_a, col_t = st.columns(2)
 
 with col_a:
     st.subheader("Acquirer (buyer)")
-    st.caption("Most recent year; same units for all money fields.")
+    st.caption(f"Most recent year. {money_hint}")
     ar = st.number_input("Revenue", key="ar", min_value=0.0, value=100.0, step=1.0, format="%.0f")
     ac = st.number_input("Cost of goods sold", key="ac", min_value=0.0, value=40.0, step=1.0, format="%.0f")
     ae = st.number_input("EBITDA", key="ae", min_value=0.0, value=25.0, step=1.0, format="%.0f")
@@ -138,11 +217,18 @@ with col_a:
         help="Percent per year for the base case sales path.",
     )
     ag = _pct(ag_pct)
-    st.markdown("**Scenario sales growth (per year)**")
-    ago_pct = st.number_input("Optimistic", key="ago", value=6.0, step=0.5, format="%.1f", help="Percent per year.")
-    agp_pct = st.number_input("Pessimistic", key="agp", value=1.0, step=0.5, format="%.1f", help="Percent per year.")
-    ago, agp = _pct(ago_pct), _pct(agp_pct)
-    if not margins_same:
+    if is_discrete:
+        st.markdown("**Scenario sales growth (per year)**")
+        ago_pct = st.number_input(
+            "Optimistic", key="ago", value=6.0, step=0.5, format="%.1f", help="Percent per year."
+        )
+        agp_pct = st.number_input(
+            "Pessimistic", key="agp", value=1.0, step=0.5, format="%.1f", help="Percent per year."
+        )
+        ago, agp = _pct(ago_pct), _pct(agp_pct)
+    else:
+        ago = agp = 0.0
+    if is_discrete and not margins_same:
         st.markdown("**Scenario margins (percent of revenue)**")
         agmo_pct = st.number_input("Optimistic gross margin", key="agmo", value=65.0, step=1.0, format="%.0f")
         agmp_pct = st.number_input("Pessimistic gross margin", key="agmp", value=55.0, step=1.0, format="%.0f")
@@ -155,10 +241,25 @@ with col_a:
 
 with col_t:
     st.subheader("Target (seller)")
-    st.caption("Most recent year; same units as acquirer.")
-    tr = st.number_input("Revenue", key="tr", min_value=0.0, value=50.0, step=1.0, format="%.0f")
-    tc = st.number_input("Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=1.0, format="%.0f")
-    te = st.number_input("EBITDA", key="te", min_value=0.0, value=12.0, step=1.0, format="%.0f")
+    if target_other_ccy:
+        st.caption(
+            f"Enter amounts in **{st.session_state.get('target_input_ccy', 'other')}**; "
+            f"converted to **{reporting_ccy}** for the model."
+        )
+    else:
+        st.caption(f"Most recent year. {money_hint}")
+    tr_raw = st.number_input("Revenue", key="tr", min_value=0.0, value=50.0, step=1.0, format="%.0f")
+    tc_raw = st.number_input("Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=1.0, format="%.0f")
+    te_raw = st.number_input("EBITDA", key="te", min_value=0.0, value=12.0, step=1.0, format="%.0f")
+    tr = _to_reporting(tr_raw, fx_rate) if target_other_ccy else tr_raw
+    tc = _to_reporting(tc_raw, fx_rate) if target_other_ccy else tc_raw
+    te = _to_reporting(te_raw, fx_rate) if target_other_ccy else te_raw
+    if target_other_ccy and fx_rate > 0 and (tr_raw or tc_raw or te_raw):
+        st.caption(
+            f"In {reporting_ccy}: revenue **{format_money(tr, reporting_ccy)}**, "
+            f"COGS **{format_money(tc, reporting_ccy)}**, "
+            f"EBITDA **{format_money(te, reporting_ccy)}**."
+        )
     tg_pct = st.number_input(
         "Past revenue growth (per year)",
         key="tg",
@@ -168,11 +269,18 @@ with col_t:
         help="Percent per year for the base case sales path.",
     )
     tg = _pct(tg_pct)
-    st.markdown("**Scenario sales growth (per year)**")
-    tgo_pct = st.number_input("Optimistic", key="tgo", value=8.0, step=0.5, format="%.1f", help="Percent per year.")
-    tgp_pct = st.number_input("Pessimistic", key="tgp", value=0.0, step=0.5, format="%.1f", help="Percent per year.")
-    tgo, tgp = _pct(tgo_pct), _pct(tgp_pct)
-    if not margins_same:
+    if is_discrete:
+        st.markdown("**Scenario sales growth (per year)**")
+        tgo_pct = st.number_input(
+            "Optimistic", key="tgo", value=8.0, step=0.5, format="%.1f", help="Percent per year."
+        )
+        tgp_pct = st.number_input(
+            "Pessimistic", key="tgp", value=0.0, step=0.5, format="%.1f", help="Percent per year."
+        )
+        tgo, tgp = _pct(tgo_pct), _pct(tgp_pct)
+    else:
+        tgo = tgp = 0.0
+    if is_discrete and not margins_same:
         st.markdown("**Scenario margins (percent of revenue)**")
         tgmo_pct = st.number_input("Optimistic gross margin", key="tgmo", value=70.0, step=1.0, format="%.0f")
         tgmp_pct = st.number_input("Pessimistic gross margin", key="tgmp", value=50.0, step=1.0, format="%.0f")
@@ -214,15 +322,26 @@ inp = SimpleModelInputs(
     ps_ratio=ps_ratio,
 )
 
-if p_opt + p_pess > 1.0:
+if is_discrete and p_opt + p_pess > 1.0:
     st.stop()
 
 res = run_simple_model(inp)
 
+model_badge = "Discontinuous (weighted scenarios)" if is_discrete else "Continuous (single path)"
+st.info(f"**{model_badge}** · Reporting currency: **{reporting_ccy}** ({CURRENCIES[reporting_ccy]['name']})")
+
 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
 mcol1.metric("Discount rate", f"{res.discount_rate:.2%}", help="Used for NPV rows.")
-mcol2.metric("NPV — 10y target gross profit", f"{res.npv_gross_profit_10y:,.0f}", help="Present value of years 1–10 gross profit.")
-mcol3.metric("NPV — terminal-style", f"{res.valuation_terminal_style:,.0f}", help="Nine years plus a bumped final cash flow, per workbook pattern.")
+mcol2.metric(
+    "NPV — 10y target gross profit",
+    format_money(res.npv_gross_profit_10y, reporting_ccy),
+    help="Present value of years 1–10 gross profit.",
+)
+mcol3.metric(
+    "NPV — terminal-style",
+    format_money(res.valuation_terminal_style, reporting_ccy),
+    help="Nine years plus a bumped final cash flow, per workbook pattern.",
+)
 _g2 = res.yoy_revenue_growth[2]
 mcol4.metric(
     "Combined sales growth (yr 2)",
@@ -232,9 +351,21 @@ mcol4.metric(
 
 st.subheader("Target price heuristics")
 vcol1, vcol2, vcol3 = st.columns(3)
-vcol1.metric("Gross-profit multiple", f"{res.price_pe:,.0f}", help="Multiple × year-0 target gross profit.")
-vcol2.metric("PEG-style", f"{res.price_peg:,.0f}", help="Uses weighted sales growth and gross profit.")
-vcol3.metric("Sales multiple", f"{res.price_ps:,.0f}", help="Multiple × target revenue.")
+vcol1.metric(
+    "Gross-profit multiple",
+    format_money(res.price_pe, reporting_ccy),
+    help="Multiple × year-0 target gross profit.",
+)
+vcol2.metric(
+    "PEG-style",
+    format_money(res.price_peg, reporting_ccy),
+    help="Uses weighted sales growth and gross profit.",
+)
+vcol3.metric(
+    "Sales multiple",
+    format_money(res.price_ps, reporting_ccy),
+    help="Multiple × target revenue.",
+)
 
 years = list(range(11))
 df = pd.DataFrame(
@@ -249,18 +380,19 @@ df = pd.DataFrame(
     }
 )
 
-# Bust Plotly embed cache when series change (some hosts/browsers reuse the old figure).
 _chart_fingerprint = hash(
     (
         res.combined_gross_sales.tobytes(),
         res.combined_gross_profit.tobytes(),
+        reporting_ccy.encode(),
+        growth_method.encode(),
     )
 )
 
 st.subheader("Forecast chart")
 st.caption(
-    "Lines move when you change **revenues, COGS, EBITDA, growth rates**, or **weighted** scenario mix. "
-    "**Discount** and **multiples** only change the KPIs and price heuristics above—not these lines."
+    f"Lines in **{reporting_ccy}**. They move when you change revenues, COGS, EBITDA, growth rates, "
+    f"or (discontinuous) scenario mix. Discount and multiples only change KPIs above—not these lines."
 )
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=years, y=res.combined_gross_sales, name="Combined sales", mode="lines+markers"))
@@ -269,7 +401,7 @@ fig.update_layout(
     height=420,
     margin=dict(l=10, r=10, t=40, b=10),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    yaxis_title="Same units as your inputs",
+    yaxis_title=f"Amount ({reporting_ccy})",
     xaxis_title="Year",
 )
 st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
@@ -277,20 +409,22 @@ st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprin
 st.subheader("Year-by-year table")
 disp = df.copy()
 for c in ["Combined sales", "Combined gross profit", "Target gross profit", "Acquirer gross profit"]:
-    disp[c] = disp[c].map(lambda x: f"{x:,.2f}")
+    disp[c] = disp[c].map(lambda x, ccy=reporting_ccy: format_money(x, ccy))
 disp["Combined gross margin"] = disp["Combined gross margin"].map(lambda x: f"{x:.1%}")
 disp["YoY sales growth"] = disp["YoY sales growth"].map(lambda x: "—" if pd.isna(x) else f"{x:.1%}")
 st.dataframe(disp, use_container_width=True, hide_index=True, key=f"table_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
 
-with st.expander("Derived scenario mix (target)"):
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Optimistic", f"{res.target.p_opt:.0%}")
-    c2.metric("Base", f"{res.target.p_sq:.0%}")
-    c3.metric("Pessimistic", f"{res.target.p_pess:.0%}")
-    st.caption(
-        f"Weighted sales growth **{res.target.w_sales_growth:.2%}/yr**, "
-        f"gross margin **{res.target.w_gross_margin:.1%}**, EBITDA margin **{res.target.w_ebitda_margin:.1%}**."
-    )
+if is_discrete:
+    with st.expander("Derived scenario mix (target)"):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Optimistic", f"{res.target.p_opt:.0%}")
+        c2.metric("Base", f"{res.target.p_sq:.0%}")
+        c3.metric("Pessimistic", f"{res.target.p_pess:.0%}")
+        st.caption(
+            f"Weighted sales growth **{res.target.w_sales_growth:.2%}/yr**, "
+            f"gross margin **{res.target.w_gross_margin:.1%}**, "
+            f"EBITDA margin **{res.target.w_ebitda_margin:.1%}**."
+        )
 
 st.caption(
     "Terminal NPV uses the Simple target path (the Excel file points that row at the Complex sheet by mistake)."
