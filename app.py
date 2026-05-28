@@ -78,6 +78,28 @@ st.set_page_config(page_title="Economic Analysis (Simple)", layout="wide")
 st.title("Economic Analysis — Simple model")
 st.caption("M&A-style simple path: combine acquirer + target sales, discount target gross profit, quick valuation checks.")
 
+with st.expander("ℹ️ About this model — quick reference (from the User Manual)", expanded=False):
+    st.markdown(
+        """
+**Simple Analysis** is a Discounted Cash Flow (DCF) model of a target company. It can either weight
+future cash flows by probability for **discrete** outcomes, or account for **continuous** risk via a
+premium added to the discount rate. Base-year revenue, COGS, EBITDA, and revenue growth are
+required inputs.
+
+| Term | Definition |
+|---|---|
+| **EBITDA** | Earnings Before Interest, Tax, Depreciation & Amortization — measures operating income while negating aggressive accounting policies. |
+| **Risk-Free Rate** | Return on a security with no default risk, typically the 10-year US Treasury bond yield. |
+| **Terminal Value** | Future value of a firm assuming sustainable perpetual growth — can also represent a liquidation value. |
+| **Time Horizon** | Number of projection periods; only use a horizon where you are comfortable with your estimates. |
+| **WACC** | Weighted Average Cost of Capital — discount rate based on a firm's current capital structure. |
+| **Discrete risk** | Best for quantifiable single events (e.g. regulatory approval); modelled with probability-weighted optimistic / base / pessimistic scenarios. |
+| **Continuous risk** | Ongoing, non-quantifiable risk (e.g. inflation, political risk); modelled by adding a premium to the discount rate. |
+
+*Source: Economic Analysis Model User Manual, Gavin Cochran, University of Washington Bothell (2013).*
+        """
+    )
+
 with st.sidebar:
     st.header("Display")
     currency_key = st.selectbox(
@@ -85,7 +107,7 @@ with st.sidebar:
         list(CURRENCIES.keys()),
         index=0,
         key="currency_key",
-        help="Labels amounts in the UI only; inputs are not converted between currencies.",
+        help="Labels amounts in the UI only — no FX conversion is performed. All inputs should already be in the same currency.",
     )
     currency_meta = CURRENCIES[currency_key]
     money_hint = (
@@ -102,7 +124,12 @@ with st.sidebar:
         index=1,
         horizontal=True,
         key="growth_mode_label",
-        help="Matches the Excel workbook: Discrete uses scenario weights; Continuous adds a premium to the risk-free rate.",
+        help=(
+            "Discrete — risk that is best quantified by single events (e.g. regulatory approval). "
+            "Uses probability-weighted cash flows for optimistic, base, and pessimistic scenarios.\n\n"
+            "Continuous — ongoing risk that cannot be quantified as a single event (e.g. inflation, political risk). "
+            "Accounted for by adding a premium to the risk-free discount rate."
+        ),
     )
     growth_method = GROWTH_MODE_LABELS[mode_label]
     discrete_mode = growth_method == DISCRETE_GROWTH_METHOD
@@ -115,7 +142,11 @@ with st.sidebar:
         step=0.05,
         format="%.2f",
         key="risk_free_pct",
-        help="Annual rate, percent (e.g. 2.78 = 2.78%).",
+        help=(
+            "Annual return on a security with no default risk — typically the 10-year US Treasury yield. "
+            "A historical rate may be more sensible than the current rate depending on market conditions. "
+            "Enter as a percentage (e.g. 2.78 = 2.78%)."
+        ),
     )
     risk_free = _pct(risk_free_pct)
 
@@ -128,7 +159,11 @@ with st.sidebar:
             5,
             format="%d%%",
             key="p_opt_pct",
-            help="Share of the weighted sales-growth path; optimistic + pessimistic must stay at or below 100%.",
+            help=(
+                "Probability of the optimistic scenario. Both inputs should be reasonable — "
+                "optimistic + pessimistic must stay at or below 100% (the remainder is the base case). "
+                "Remember that growth can be negative in a pessimistic scenario."
+            ),
         )
         p_pess_pct = st.slider(
             "Pessimistic scenario weight",
@@ -138,7 +173,10 @@ with st.sidebar:
             5,
             format="%d%%",
             key="p_pess_pct",
-            help="Share of the weighted sales-growth path.",
+            help=(
+                "Probability of the pessimistic scenario. Growth can be negative here. "
+                "Optimistic + pessimistic must stay at or below 100% — the remainder becomes the base case weight."
+            ),
         )
         sq = max(0.0, 100 - p_opt_pct - p_pess_pct)
         st.caption(f"Base case weight: **{sq:.0f}%** (remainder).")
@@ -151,7 +189,12 @@ with st.sidebar:
             5,
             format="%d%%",
             key="p_opt_pct",
-            help="Added to the risk-free rate for NPV (workbook: risk-free + this premium).",
+            help=(
+                "Risk premium added to the risk-free rate to form the discount rate (Continuous mode). "
+                "While there is no single preferred method to calculate this, the premium should reflect the "
+                "firm's specific risk — emerging-market companies, for example, should carry a higher premium "
+                "than those in developed markets."
+            ),
         )
         p_pess_pct = 0
         st.caption("Pessimistic weight is not used in **Continuous** mode.")
@@ -165,7 +208,10 @@ with st.sidebar:
         "Use the same margins in every scenario",
         value=True,
         key="margins_same",
-        help="If off, you can type optimistic and pessimistic gross and EBITDA margins below.",
+        help=(
+            "When unchecked, you can enter distinct optimistic and pessimistic gross and EBITDA margins "
+            "for both companies. Use this when you expect margins to differ meaningfully across scenarios."
+        ),
     )
 
     st.divider()
@@ -176,7 +222,10 @@ with st.sidebar:
         value=20.0,
         step=0.5,
         key="pe_ratio",
-        help="Heuristic price check: multiple × target year-0 gross profit.",
+        help=(
+            "A quick valuation check: this multiple times the target's year-0 gross profit. "
+            "Some markets (especially private equity) value firms on a multiple of earnings or gross profit."
+        ),
     )
     peg_ratio = st.number_input(
         "PEG multiple",
@@ -184,7 +233,10 @@ with st.sidebar:
         value=2.0,
         step=0.1,
         key="peg_ratio",
-        help="Used with weighted sales growth and gross profit in the PEG-style row.",
+        help=(
+            "PEG-style heuristic: combines this multiple with the probability-weighted sales growth rate "
+            "and the target's gross profit to estimate a growth-adjusted price."
+        ),
     )
     ps_ratio = st.number_input(
         "Price ÷ sales",
@@ -192,29 +244,55 @@ with st.sidebar:
         value=4.0,
         step=0.25,
         key="ps_ratio",
-        help="Multiple × target revenue.",
+        help="Price-to-sales heuristic: this multiple times the target's base-year revenue.",
     )
 
 col_a, col_t = st.columns(2)
 
 with col_a:
     st.subheader("Acquirer (buyer)")
-    st.caption(f"Most recent year; {money_hint}")
-    ar = st.number_input("Revenue", key="ar", min_value=0.0, value=100.0, step=1.0, format="%.0f")
-    ac = st.number_input("Cost of goods sold", key="ac", min_value=0.0, value=40.0, step=1.0, format="%.0f")
-    ae = st.number_input("EBITDA", key="ae", min_value=0.0, value=25.0, step=1.0, format="%.0f")
+    st.caption(f"Base year; {money_hint}")
+    ar = st.number_input(
+        "Revenue", key="ar", min_value=0.0, value=100.0, step=1.0, format="%.0f",
+        help=(
+            "Base-year revenue — the starting point for future projections. "
+            "'Base year' doesn't have to be the most recent year; choose the year most representative of firm performance."
+        ),
+    )
+    ac = st.number_input(
+        "Cost of goods sold", key="ac", min_value=0.0, value=40.0, step=1.0, format="%.0f",
+        help="Direct costs of producing goods or services. Gross profit = Revenue − COGS.",
+    )
+    ae = st.number_input(
+        "EBITDA", key="ae", min_value=0.0, value=25.0, step=1.0, format="%.0f",
+        help=(
+            "Earnings Before Interest, Tax, Depreciation & Amortization. "
+            "Measures operating income while negating aggressive accounting policies. "
+            "Used as an input for EBITDA-based valuation checks."
+        ),
+    )
     ag_pct = st.number_input(
         "Past revenue growth (per year)",
         key="ag",
         value=3.0,
         step=0.5,
         format="%.1f",
-        help="Percent per year for the base case sales path.",
+        help=(
+            "Historical revenue growth rate used as the base-case sales path. "
+            "Only include periods that reflect the current state of the firm — "
+            "exclude periods prior to major divestitures or business-model changes."
+        ),
     )
     ag = _pct(ag_pct)
     st.markdown("**Scenario sales growth (per year)**")
-    ago_pct = st.number_input("Optimistic", key="ago", value=6.0, step=0.5, format="%.1f", help="Percent per year.")
-    agp_pct = st.number_input("Pessimistic", key="agp", value=1.0, step=0.5, format="%.1f", help="Percent per year.")
+    ago_pct = st.number_input(
+        "Optimistic", key="ago", value=6.0, step=0.5, format="%.1f",
+        help="Expected annual revenue growth under the optimistic scenario. Should be a plausible upside estimate.",
+    )
+    agp_pct = st.number_input(
+        "Pessimistic", key="agp", value=1.0, step=0.5, format="%.1f",
+        help="Expected annual revenue growth under the pessimistic scenario. Can be negative.",
+    )
     ago, agp = _pct(ago_pct), _pct(agp_pct)
     if not margins_same:
         st.markdown("**Scenario margins (percent of revenue)**")
@@ -229,22 +307,48 @@ with col_a:
 
 with col_t:
     st.subheader("Target (seller)")
-    st.caption(f"Most recent year; {money_hint}")
-    tr = st.number_input("Revenue", key="tr", min_value=0.0, value=50.0, step=1.0, format="%.0f")
-    tc = st.number_input("Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=1.0, format="%.0f")
-    te = st.number_input("EBITDA", key="te", min_value=0.0, value=12.0, step=1.0, format="%.0f")
+    st.caption(f"Base year; {money_hint}")
+    tr = st.number_input(
+        "Revenue", key="tr", min_value=0.0, value=50.0, step=1.0, format="%.0f",
+        help=(
+            "Base-year revenue — the starting point for future projections. "
+            "'Base year' doesn't have to be the most recent year; choose the year most representative of firm performance."
+        ),
+    )
+    tc = st.number_input(
+        "Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=1.0, format="%.0f",
+        help="Direct costs of producing goods or services. Gross profit = Revenue − COGS.",
+    )
+    te = st.number_input(
+        "EBITDA", key="te", min_value=0.0, value=12.0, step=1.0, format="%.0f",
+        help=(
+            "Earnings Before Interest, Tax, Depreciation & Amortization. "
+            "Measures operating income while negating aggressive accounting policies. "
+            "Used as an input for EBITDA-based valuation checks."
+        ),
+    )
     tg_pct = st.number_input(
         "Past revenue growth (per year)",
         key="tg",
         value=4.0,
         step=0.5,
         format="%.1f",
-        help="Percent per year for the base case sales path.",
+        help=(
+            "Historical revenue growth rate used as the base-case sales path. "
+            "Only include periods that reflect the current state of the firm — "
+            "exclude periods prior to major divestitures or business-model changes."
+        ),
     )
     tg = _pct(tg_pct)
     st.markdown("**Scenario sales growth (per year)**")
-    tgo_pct = st.number_input("Optimistic", key="tgo", value=8.0, step=0.5, format="%.1f", help="Percent per year.")
-    tgp_pct = st.number_input("Pessimistic", key="tgp", value=0.0, step=0.5, format="%.1f", help="Percent per year.")
+    tgo_pct = st.number_input(
+        "Optimistic", key="tgo", value=8.0, step=0.5, format="%.1f",
+        help="Expected annual revenue growth under the optimistic scenario. Should be a plausible upside estimate.",
+    )
+    tgp_pct = st.number_input(
+        "Pessimistic", key="tgp", value=0.0, step=0.5, format="%.1f",
+        help="Expected annual revenue growth under the pessimistic scenario. Can be negative.",
+    )
     tgo, tgp = _pct(tgo_pct), _pct(tgp_pct)
     if not margins_same:
         st.markdown("**Scenario margins (percent of revenue)**")
@@ -294,22 +398,41 @@ if discrete_mode and p_opt + p_pess > 1.0:
 res = run_simple_model(inp)
 
 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
-mcol1.metric("Discount rate", f"{res.discount_rate:.2%}", help="Used for NPV rows.")
+mcol1.metric(
+    "Discount rate",
+    f"{res.discount_rate:.2%}",
+    help=(
+        "The rate used to discount future cash flows to present value. "
+        "In Discrete mode this equals the risk-free rate; in Continuous mode the risk premium is added. "
+        "Remember that while Treasury rates are a good proxy, a historical rate may be more appropriate "
+        "depending on current market conditions."
+    ),
+)
 mcol2.metric(
     "NPV — 10y target gross profit",
     _format_money(res.npv_gross_profit_10y, currency_key),
-    help="Present value of years 1–10 gross profit.",
+    help=(
+        "Net Present Value of the target's projected gross profit over years 1–10, "
+        "discounted at the current discount rate. This is the core DCF valuation output."
+    ),
 )
 mcol3.metric(
     "NPV — terminal-style",
     _format_money(res.valuation_terminal_style, currency_key),
-    help="Nine years plus a bumped final cash flow, per workbook pattern.",
+    help=(
+        "DCF over nine years with a bumped final cash flow approximating terminal value. "
+        "Terminal value represents the present value of the firm assuming sustainable perpetual growth — "
+        "it can also be interpreted as a future liquidation value."
+    ),
 )
 _g2 = res.yoy_revenue_growth[2]
 mcol4.metric(
     "Combined sales growth (yr 2)",
     f"{_g2:.1%}" if res.combined_gross_sales[1] > 0 and pd.notna(_g2) else "—",
-    help="Year-on-year change in combined sales from year 1 to year 2.",
+    help=(
+        "Year-on-year change in combined (acquirer + target) sales from year 1 to year 2. "
+        "Useful for quickly assessing the combined firm's near-term growth trajectory post-acquisition."
+    ),
 )
 
 st.subheader("Target price heuristics")
@@ -317,17 +440,23 @@ vcol1, vcol2, vcol3 = st.columns(3)
 vcol1.metric(
     "Gross-profit multiple",
     _format_money(res.price_pe, currency_key),
-    help="Multiple × year-0 target gross profit.",
+    help=(
+        "Heuristic price estimate: the gross-profit multiple × target's year-0 gross profit. "
+        "Some investment markets (especially private equity) value firms on a multiple of earnings or gross profit."
+    ),
 )
 vcol2.metric(
     "PEG-style",
     _format_money(res.price_peg, currency_key),
-    help="Uses weighted sales growth and gross profit.",
+    help=(
+        "Growth-adjusted price estimate using the PEG multiple, probability-weighted sales growth, "
+        "and the target's gross profit. Useful for comparing firms with different growth profiles."
+    ),
 )
 vcol3.metric(
     "Sales multiple",
     _format_money(res.price_ps, currency_key),
-    help="Multiple × target revenue.",
+    help="Heuristic price estimate: the price-to-sales multiple × target's base-year revenue.",
 )
 
 years = list(range(11))
@@ -356,20 +485,40 @@ st.caption(
     "Lines move when you change **revenues, COGS, EBITDA, growth rates**, or **weighted** scenario mix. "
     "**Discount** and **multiples** only change the KPIs and price heuristics above—not these lines."
 )
+
+display_years = st.slider(
+    "Years to display",
+    min_value=1,
+    max_value=10,
+    value=10,
+    step=1,
+    key="display_years",
+    help=(
+        "Choose how many projection years to show in the chart and table (year 0 is always shown). "
+        "Per the user manual, only use a time horizon where you are comfortable with your estimates — "
+        "if reliable estimates can only be made for five years, a horizon of ten would be inappropriate."
+    ),
+)
+_display_idx = display_years + 1  # include year 0
+
+years_disp = years[:_display_idx]
+sales_disp = res.combined_gross_sales[:_display_idx]
+profit_disp = res.combined_gross_profit[:_display_idx]
+
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=years, y=res.combined_gross_sales, name="Combined sales", mode="lines+markers"))
-fig.add_trace(go.Scatter(x=years, y=res.combined_gross_profit, name="Combined gross profit", mode="lines+markers"))
+fig.add_trace(go.Scatter(x=years_disp, y=sales_disp, name="Combined sales", mode="lines+markers"))
+fig.add_trace(go.Scatter(x=years_disp, y=profit_disp, name="Combined gross profit", mode="lines+markers"))
 fig.update_layout(
-    height=420,
-    margin=dict(l=10, r=10, t=40, b=10),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    height=440,
+    margin=dict(l=10, r=10, t=20, b=60),
+    legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
     yaxis_title=currency_key.split(" — ")[0] if currency_meta["symbol"] else "Amount (no currency symbol)",
     xaxis_title="Year",
 )
-st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}")
+st.plotly_chart(fig, use_container_width=True, key=f"forecast_{_chart_fingerprint & 0xFFFFFFFFFFFFFFFF}_{display_years}")
 
 st.subheader("Year-by-year table")
-disp = df.copy()
+disp = df.iloc[:_display_idx].copy()
 for c in ["Combined sales", "Combined gross profit", "Target gross profit", "Acquirer gross profit"]:
     disp[c] = disp[c].map(lambda x, ck=currency_key: _format_money(float(x), ck, decimals=2))
 disp["Combined gross margin"] = disp["Combined gross margin"].map(lambda x: f"{x:.1%}")
@@ -386,6 +535,3 @@ with st.expander("Derived scenario mix (target)", expanded=discrete_mode):
         f"gross margin **{res.target.w_gross_margin:.1%}**, EBITDA margin **{res.target.w_ebitda_margin:.1%}**."
     )
 
-st.caption(
-    "Terminal NPV uses the Simple target path (the Excel file points that row at the Complex sheet by mistake)."
-)
