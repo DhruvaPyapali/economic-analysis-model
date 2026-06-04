@@ -153,11 +153,11 @@ with st.sidebar:
     if discrete_mode:
         p_opt_pct = st.slider(
             "Optimistic scenario weight",
-            0,
-            100,
-            0,
-            5,
-            format="%d%%",
+            0.0,
+            100.0,
+            0.0,
+            0.1,
+            format="%.1f%%",
             key="p_opt_pct",
             help=(
                 "Probability of the optimistic scenario. Both inputs should be reasonable — "
@@ -167,27 +167,27 @@ with st.sidebar:
         )
         p_pess_pct = st.slider(
             "Pessimistic scenario weight",
-            0,
-            100,
-            0,
-            5,
-            format="%d%%",
+            0.0,
+            100.0,
+            0.0,
+            0.1,
+            format="%.1f%%",
             key="p_pess_pct",
             help=(
                 "Probability of the pessimistic scenario. Growth can be negative here. "
                 "Optimistic + pessimistic must stay at or below 100% — the remainder becomes the base case weight."
             ),
         )
-        sq = max(0.0, 100 - p_opt_pct - p_pess_pct)
-        st.caption(f"Base case weight: **{sq:.0f}%** (remainder).")
+        sq = max(0.0, 100.0 - p_opt_pct - p_pess_pct)
+        st.caption(f"Base case weight: **{sq:.1f}%** (remainder).")
     else:
         p_opt_pct = st.slider(
             "Discount rate premium (optimistic)",
-            0,
-            100,
-            0,
-            5,
-            format="%d%%",
+            0.0,
+            100.0,
+            0.0,
+            0.1,
+            format="%.1f%%",
             key="p_opt_pct",
             help=(
                 "Risk premium added to the risk-free rate to form the discount rate (Continuous mode). "
@@ -196,7 +196,7 @@ with st.sidebar:
                 "than those in developed markets."
             ),
         )
-        p_pess_pct = 0
+        p_pess_pct = 0.0
         st.caption("Pessimistic weight is not used in **Continuous** mode.")
 
     p_opt = _pct(float(p_opt_pct))
@@ -253,18 +253,18 @@ with col_a:
     st.subheader("Acquirer (buyer)")
     st.caption(f"Base year; {money_hint}")
     ar = st.number_input(
-        "Revenue", key="ar", min_value=0.0, value=100.0, step=1.0, format="%.0f",
+        "Revenue", key="ar", min_value=0.0, value=100.0, step=0.01, format="%.2f",
         help=(
             "Base-year revenue — the starting point for future projections. "
             "'Base year' doesn't have to be the most recent year; choose the year most representative of firm performance."
         ),
     )
     ac = st.number_input(
-        "Cost of goods sold", key="ac", min_value=0.0, value=40.0, step=1.0, format="%.0f",
+        "Cost of goods sold", key="ac", min_value=0.0, value=40.0, step=0.01, format="%.2f",
         help="Direct costs of producing goods or services. Gross profit = Revenue − COGS.",
     )
     ae = st.number_input(
-        "EBITDA", key="ae", min_value=0.0, value=25.0, step=1.0, format="%.0f",
+        "EBITDA", key="ae", min_value=0.0, value=25.0, step=0.01, format="%.2f",
         help=(
             "Earnings Before Interest, Tax, Depreciation & Amortization. "
             "Measures operating income while negating aggressive accounting policies. "
@@ -296,10 +296,10 @@ with col_a:
     ago, agp = _pct(ago_pct), _pct(agp_pct)
     if not margins_same:
         st.markdown("**Scenario margins (percent of revenue)**")
-        agmo_pct = st.number_input("Optimistic gross margin", key="agmo", value=65.0, step=1.0, format="%.0f")
-        agmp_pct = st.number_input("Pessimistic gross margin", key="agmp", value=55.0, step=1.0, format="%.0f")
-        aemo_pct = st.number_input("Optimistic EBITDA margin", key="aemo", value=30.0, step=1.0, format="%.0f")
-        aemp_pct = st.number_input("Pessimistic EBITDA margin", key="aemp", value=20.0, step=1.0, format="%.0f")
+        agmo_pct = st.number_input("Optimistic gross margin", key="agmo", value=65.0, step=0.1, format="%.1f")
+        agmp_pct = st.number_input("Pessimistic gross margin", key="agmp", value=55.0, step=0.1, format="%.1f")
+        aemo_pct = st.number_input("Optimistic EBITDA margin", key="aemo", value=30.0, step=0.1, format="%.1f")
+        aemp_pct = st.number_input("Pessimistic EBITDA margin", key="aemp", value=20.0, step=0.1, format="%.1f")
         agmo, agmp = _pct(agmo_pct), _pct(agmp_pct)
         aemo, aemp = _pct(aemo_pct), _pct(aemp_pct)
     else:
@@ -309,18 +309,18 @@ with col_t:
     st.subheader("Target (seller)")
     st.caption(f"Base year; {money_hint}")
     tr = st.number_input(
-        "Revenue", key="tr", min_value=0.0, value=50.0, step=1.0, format="%.0f",
+        "Revenue", key="tr", min_value=0.0, value=50.0, step=0.01, format="%.2f",
         help=(
             "Base-year revenue — the starting point for future projections. "
             "'Base year' doesn't have to be the most recent year; choose the year most representative of firm performance."
         ),
     )
     tc = st.number_input(
-        "Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=1.0, format="%.0f",
+        "Cost of goods sold", key="tc", min_value=0.0, value=20.0, step=0.01, format="%.2f",
         help="Direct costs of producing goods or services. Gross profit = Revenue − COGS.",
     )
     te = st.number_input(
-        "EBITDA", key="te", min_value=0.0, value=12.0, step=1.0, format="%.0f",
+        "EBITDA", key="te", min_value=0.0, value=12.0, step=0.01, format="%.2f",
         help=(
             "Earnings Before Interest, Tax, Depreciation & Amortization. "
             "Measures operating income while negating aggressive accounting policies. "
@@ -352,10 +352,10 @@ with col_t:
     tgo, tgp = _pct(tgo_pct), _pct(tgp_pct)
     if not margins_same:
         st.markdown("**Scenario margins (percent of revenue)**")
-        tgmo_pct = st.number_input("Optimistic gross margin", key="tgmo", value=70.0, step=1.0, format="%.0f")
-        tgmp_pct = st.number_input("Pessimistic gross margin", key="tgmp", value=50.0, step=1.0, format="%.0f")
-        temo_pct = st.number_input("Optimistic EBITDA margin", key="temo", value=32.0, step=1.0, format="%.0f")
-        temp_pct = st.number_input("Pessimistic EBITDA margin", key="temp", value=18.0, step=1.0, format="%.0f")
+        tgmo_pct = st.number_input("Optimistic gross margin", key="tgmo", value=70.0, step=0.1, format="%.1f")
+        tgmp_pct = st.number_input("Pessimistic gross margin", key="tgmp", value=50.0, step=0.1, format="%.1f")
+        temo_pct = st.number_input("Optimistic EBITDA margin", key="temo", value=32.0, step=0.1, format="%.1f")
+        temp_pct = st.number_input("Pessimistic EBITDA margin", key="temp", value=18.0, step=0.1, format="%.1f")
         tgmo, tgmp = _pct(tgmo_pct), _pct(tgmp_pct)
         temo, temp = _pct(temo_pct), _pct(temp_pct)
     else:
